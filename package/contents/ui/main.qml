@@ -88,8 +88,15 @@ PlasmoidItem {
 
     function fetchCredentials() {
         var path = Plasmoid.configuration.credentialsPath;
-        // Use shell to expand ~ via eval, with proper quoting
-        credentialsSource.connectSource("cat " + path);
+        // Expand ~ and single-quote the rest to prevent shell injection
+        var cmd;
+        if (path.indexOf("~/") === 0) {
+            var rest = path.substring(1).replace(/'/g, "'\\''");
+            cmd = "cat \"$HOME\"'" + rest + "'";
+        } else {
+            cmd = "cat '" + path.replace(/'/g, "'\\''") + "'";
+        }
+        credentialsSource.connectSource(cmd);
     }
 
     function fetchUsage() {
