@@ -13,10 +13,25 @@ PlasmoidItem {
     property string sevenDayResetsAt: ""
     property string errorMessage: ""
 
+    // Burn rate (percentage per hour, for display)
+    property real fiveHourBurnRate: -1  // -1 = not yet calculated
+    property real sevenDayBurnRate: -1
+
+    // Unified history for graphs — array of {t: timestamp_ms, fh: 0-100, sd: 0-100}
+    property var usageHistory: []
+
     // Internal state
     property string accessToken: ""
     property bool fetching: false
     property double tokenExpiresAt: 0
+
+    // Internal burn rate tracking
+    property real _prevFiveHourUsage: -1
+    property double _prevFiveHourTime: 0
+    property real _prevSevenDayUsage: -1
+    property double _prevSevenDayTime: 0
+    property real _smoothedFiveHourRate: 0
+    property real _smoothedSevenDayRate: 0
 
     switchWidth: Kirigami.Units.gridUnit * 10
     switchHeight: Kirigami.Units.gridUnit * 10
@@ -144,6 +159,11 @@ PlasmoidItem {
                     root.fiveHourResetsAt = (fh && fh.resets_at) ? fh.resets_at : "";
                     root.sevenDayResetsAt = (sd && sd.resets_at) ? sd.resets_at : "";
                     root.errorMessage = "";
+                    root.recordDataPoint();
+                    // On fresh install, schedule a quick follow-up for burn rate
+                    if (root.fiveHourBurnRate < 0 && !bootstrapTimer.running) {
+                        bootstrapTimer.start();
+                    }
                 } catch (e) {
                     root.errorMessage = i18n("Failed to parse usage response: %1", e.message);
                 }
@@ -165,4 +185,95 @@ PlasmoidItem {
     function refresh() {
         fetchCredentials();
     }
+
+    // One-shot timer for quick follow-up poll on fresh installs
+    Timer {
+        id: bootstrapTimer
+        interval: 60000
+        running: false
+        repeat: false
+        onTriggered: {
+            if (root.fiveHourBurnRate < 0) fetchCredentials();
+        }
+    }
+
+    function loadHistory() {
+        try {
+            var raw = Plasmoid.configuration.usageHistory;
+            root.usageHistory = (raw && raw !== "") ? JSON.parse(raw) : [];
+        } catch (e) {
+            root.usageHistory = [];
+        }
+        // Compute burn rate from recent history so it's available immediately
+        var hist = root.usageHistory;
+        if (hist.length >= 2) {
+            var last = hist[hist.length - 1];
+            root._prevFiveHourUsage = last.fh;
+            root._prevFiveHourTime = last.t;
+            root._prevSevenDayUsage = last.sd;
+            root._prevSevenDayTime = last.t;
+
+            // Average rate over last few data points
+            var lookback = Math.min(5, hist.length);
+            var first = hist[hist.length - lookback];
+            var dtHours = (last.t - first.t) / 3600000;
+            if (dtHours > 0) {
+                var fhRate = Math.max(0, (last.fh - first.fh) / dtHours);
+                root._smoothedFiveHourRate = fhRate;
+                root.fiveHourBurnRate = fhRate;
+            }
+        } else if (hist.length === 1) {
+            var pt = hist[0];
+            root._prevFiveHourUsage = pt.fh;
+            root._prevFiveHourTime = pt.t;
+            root._prevSevenDayUsage = pt.sd;
+            root._prevSevenDayTime = pt.t;
+        }
+    }
+
+    function persistHistory() {
+        Plasmoid.configuration.usageHistory = JSON.stringify(root.usageHistory);
+    }
+
+    function recordDataPoint() {
+        var now = Date.now();
+        var fhPct = root.fiveHourUsage * 100;
+        var sdPct = root.sevenDayUsage * 100;
+
+        // --- Five hour burn rate ---
+        if (root._prevFiveHourUsage >= 0 && root._prevFiveHourTime > 0) {
+            var dtH = (now - root._prevFiveHourTime) / 3600000; // hours
+            if (dtH > 0) {
+                var rawFh = (fhPct - root._prevFiveHourUsage) / dtH;
+                if (rawFh < 0) rawFh = 0; // clamp on reset
+                root._smoothedFiveHourRate = 0.3 * rawFh + 0.7 * root._smoothedFiveHourRate;
+                root.fiveHourBurnRate = Math.max(0, root._smoothedFiveHourRate);
+            }
+        }
+        root._prevFiveHourUsage = fhPct;
+        root._prevFiveHourTime = now;
+
+        // --- Seven day burn rate ---
+        if (root._prevSevenDayUsage >= 0 && root._prevSevenDayTime > 0) {
+            var dtH2 = (now - root._prevSevenDayTime) / 3600000;
+            if (dtH2 > 0) {
+                var rawSd = (sdPct - root._prevSevenDayUsage) / dtH2;
+                if (rawSd < 0) rawSd = 0;
+                root._smoothedSevenDayRate = 0.3 * rawSd + 0.7 * root._smoothedSevenDayRate;
+                root.sevenDayBurnRate = Math.max(0, root._smoothedSevenDayRate);
+            }
+        }
+        root._prevSevenDayUsage = sdPct;
+        root._prevSevenDayTime = now;
+
+        // --- Append to unified history ---
+        var arr = root.usageHistory.slice();
+        arr.push({t: now, fh: fhPct, sd: sdPct});
+        if (arr.length > 5000) arr = arr.slice(arr.length - 5000);
+        root.usageHistory = arr;
+
+        persistHistory();
+    }
+
+    Component.onCompleted: loadHistory()
 }

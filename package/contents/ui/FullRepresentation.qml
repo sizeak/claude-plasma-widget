@@ -14,13 +14,55 @@ PlasmaExtras.Representation {
     readonly property string fiveHourResets: root.fiveHourResetsAt
     readonly property string sevenDayResets: root.sevenDayResetsAt
     readonly property string errorMsg: root.errorMessage
+    readonly property real fiveHourBurnRate: root.fiveHourBurnRate
+    readonly property var usageHistory: root.usageHistory
+
+    // Time range selector: 0=Session, 1=24h, 2=7d, 3=30d
+    property int selectedRangeIndex: 0
+
+    // Compute graph time window
+    readonly property double graphTimeEnd: {
+        if (selectedRangeIndex === 0 && full.fiveHourResets) {
+            // Session: end at the reset time (natural future projection space)
+            var resetMs = new Date(full.fiveHourResets).getTime();
+            if (!isNaN(resetMs) && resetMs > 0) return resetMs;
+        }
+        if (selectedRangeIndex === 1) {
+            // 24h: extend ~8% past "now" for projection line
+            return Date.now() + 24 * 3600000 * 0.08;
+        }
+        // 7d/30d: no projection, end at now
+        return Date.now();
+    }
+    readonly property double graphTimeStart: {
+        var durations = [5 * 3600000, 24 * 3600000, 7 * 24 * 3600000, 30 * 24 * 3600000];
+        return graphTimeEnd - durations[selectedRangeIndex];
+    }
+
+    // Filter history to the computed time window, mapping to {t, v} for the graph
+    readonly property var filteredData: {
+        var history = full.usageHistory;
+        if (!history || history.length === 0) return [];
+        var tStart = full.graphTimeStart;
+        var tEnd = full.graphTimeEnd;
+        var result = [];
+        for (var i = 0; i < history.length; i++) {
+            if (history[i].t >= tStart && history[i].t <= tEnd) {
+                result.push({t: history[i].t, v: history[i].fh});
+            }
+        }
+        return result;
+    }
 
     implicitWidth: Kirigami.Units.gridUnit * 20
-    implicitHeight: contentLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
+    implicitHeight: Kirigami.Units.gridUnit * 30
     Layout.minimumWidth: Kirigami.Units.gridUnit * 18
-    Layout.minimumHeight: Kirigami.Units.gridUnit * 12
+    Layout.minimumHeight: Kirigami.Units.gridUnit * 14
     Layout.maximumWidth: Kirigami.Units.gridUnit * 30
-    Layout.maximumHeight: Kirigami.Units.gridUnit * 30
+    Layout.maximumHeight: Kirigami.Units.gridUnit * 50
+    Layout.preferredHeight: Plasmoid.configuration.showGraphs
+        ? Kirigami.Units.gridUnit * 36
+        : Kirigami.Units.gridUnit * 14
 
     header: PlasmaExtras.PlasmoidHeading {
         RowLayout {
@@ -74,11 +116,6 @@ PlasmaExtras.Representation {
                 QQC2.Label {
                     text: Math.round(full.fiveHourUsage * 100) + "%"
                     font.bold: true
-                    color: {
-                        if (full.fiveHourUsage >= 0.90) return Kirigami.Theme.negativeTextColor;
-                        if (full.fiveHourUsage >= 0.75) return Kirigami.Theme.neutralTextColor;
-                        return Kirigami.Theme.positiveTextColor;
-                    }
                 }
             }
 
@@ -89,12 +126,29 @@ PlasmaExtras.Representation {
                 value: full.fiveHourUsage
             }
 
-            QQC2.Label {
-                text: full.fiveHourResets
-                    ? i18n("Resets at %1", formatResetTime(full.fiveHourResets))
-                    : i18n("Reset time unknown")
-                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                color: Kirigami.Theme.disabledTextColor
+            RowLayout {
+                Layout.fillWidth: true
+                QQC2.Label {
+                    text: full.fiveHourResets
+                        ? i18n("Resets at %1", formatResetTime(full.fiveHourResets))
+                        : i18n("Reset time unknown")
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    color: Kirigami.Theme.disabledTextColor
+                    Layout.fillWidth: true
+                }
+                QQC2.Label {
+                    text: full.fiveHourBurnRate < 0
+                        ? i18n("Burn rate: calculating...")
+                        : i18n("Burn rate: %1%/hr", full.fiveHourBurnRate.toFixed(1))
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    color: {
+                        if (full.fiveHourBurnRate < 0) return Kirigami.Theme.disabledTextColor;
+                        var remaining = 100 - full.fiveHourUsage * 100;
+                        if (full.fiveHourBurnRate > 0 && remaining / full.fiveHourBurnRate < 1)
+                            return Kirigami.Theme.negativeTextColor;
+                        return Kirigami.Theme.disabledTextColor;
+                    }
+                }
             }
         }
 
@@ -120,11 +174,6 @@ PlasmaExtras.Representation {
                 QQC2.Label {
                     text: Math.round(full.sevenDayUsage * 100) + "%"
                     font.bold: true
-                    color: {
-                        if (full.sevenDayUsage >= 0.90) return Kirigami.Theme.negativeTextColor;
-                        if (full.sevenDayUsage >= 0.75) return Kirigami.Theme.neutralTextColor;
-                        return Kirigami.Theme.positiveTextColor;
-                    }
                 }
             }
 
@@ -141,6 +190,52 @@ PlasmaExtras.Representation {
                     : i18n("Reset time unknown")
                 font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 color: Kirigami.Theme.disabledTextColor
+            }
+        }
+
+        // Graph section
+        Kirigami.Separator {
+            Layout.fillWidth: true
+            visible: Plasmoid.configuration.showGraphs
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: Kirigami.Units.smallSpacing
+            visible: Plasmoid.configuration.showGraphs
+
+            PlasmaComponents3.TabBar {
+                id: rangeSelector
+                Layout.fillWidth: true
+
+                PlasmaComponents3.TabButton {
+                    text: i18n("Session")
+                    onClicked: full.selectedRangeIndex = 0
+                }
+                PlasmaComponents3.TabButton {
+                    text: i18n("24h")
+                    onClicked: full.selectedRangeIndex = 1
+                }
+                PlasmaComponents3.TabButton {
+                    text: i18n("7d")
+                    onClicked: full.selectedRangeIndex = 2
+                }
+                PlasmaComponents3.TabButton {
+                    text: i18n("30d")
+                    onClicked: full.selectedRangeIndex = 3
+                }
+            }
+
+            UsageGraph {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: Kirigami.Units.gridUnit * 6
+                dataPoints: full.filteredData
+                timeStart: full.graphTimeStart
+                timeEnd: full.graphTimeEnd
+                burnRate: (full.selectedRangeIndex <= 1) ? full.fiveHourBurnRate : -1
+                lineColor: "#1d99f3"
             }
         }
     }
