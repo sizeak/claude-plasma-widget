@@ -23,15 +23,16 @@ PlasmaExtras.Representation {
     // Compute graph time window
     readonly property double graphTimeEnd: {
         if (selectedRangeIndex === 0 && full.fiveHourResets) {
-            // Session: end at the reset time (natural future projection space)
+            // Session: end at the session reset time
             var resetMs = new Date(full.fiveHourResets).getTime();
             if (!isNaN(resetMs) && resetMs > 0) return resetMs;
         }
-        if (selectedRangeIndex === 1) {
-            // 24h: extend ~8% past "now" for projection line
-            return Date.now() + 24 * 3600000 * 0.08;
+        if (selectedRangeIndex === 2 && full.sevenDayResets) {
+            // 7d: end at the weekly limit reset time
+            var resetMs7 = new Date(full.sevenDayResets).getTime();
+            if (!isNaN(resetMs7) && resetMs7 > 0) return resetMs7;
         }
-        // 7d/30d: no projection, end at now
+        // 24h / 30d: end at now
         return Date.now();
     }
     readonly property double graphTimeStart: {

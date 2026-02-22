@@ -289,38 +289,6 @@ Item {
             }
         }
 
-        // X-axis time labels
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.leftMargin: yAxisLabels.width + Kirigami.Units.smallSpacing
-
-            QQC2.Label {
-                text: formatTime(graph.timeStart, graph.timeEnd - graph.timeStart)
-                font: Kirigami.Theme.smallFont
-                color: Kirigami.Theme.disabledTextColor
-                Layout.alignment: Qt.AlignLeft
-            }
-            Item { Layout.fillWidth: true }
-            QQC2.Label {
-                text: formatTime(graph.timeEnd, graph.timeEnd - graph.timeStart)
-                font: Kirigami.Theme.smallFont
-                color: Kirigami.Theme.disabledTextColor
-                Layout.alignment: Qt.AlignRight
-            }
-        }
-    }
-
-    function formatTime(timestamp, spanMs) {
-        var d = new Date(timestamp);
-        var hours = d.getHours();
-        var mins = d.getMinutes();
-        var time = (hours < 10 ? "0" : "") + hours + ":" + (mins < 10 ? "0" : "") + mins;
-        if (spanMs > 48 * 3600000) {
-            var months = ["Jan","Feb","Mar","Apr","May","Jun",
-                          "Jul","Aug","Sep","Oct","Nov","Dec"];
-            return months[d.getMonth()] + " " + d.getDate();
-        }
-        return time;
     }
 
     // Repaint when data, size, or theme changes
