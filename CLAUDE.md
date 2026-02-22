@@ -36,6 +36,8 @@ There are no build steps or tests. QML is interpreted at runtime by plasmashell.
 
 **Config system:** `config/main.xml` defines the schema (KConfigXT), `config/config.qml` registers the settings tab, `ui/configGeneral.qml` is the settings page UI. Settings use `cfg_` property aliases for automatic Plasma config binding.
 
+**Usage history** is stored in `~/.local/share/claude-code-usage/history.json` (not in KConfig) to avoid risking widget config corruption. Written atomically via temp file + `mv`.
+
 ## API Details
 
 - **Endpoint:** `GET https://api.anthropic.com/api/oauth/usage`

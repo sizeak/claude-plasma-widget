@@ -9,6 +9,7 @@ KCM.SimpleKCM {
 
     property alias cfg_showWeeklyUsage: showWeeklyCheck.checked
     property alias cfg_showPercentageText: showPercentageCheck.checked
+    property alias cfg_showGraphs: showGraphsCheck.checked
     property alias cfg_refreshInterval: refreshSpin.value
     property alias cfg_credentialsPath: credentialsField.text
 
@@ -26,6 +27,12 @@ KCM.SimpleKCM {
             id: showPercentageCheck
             Kirigami.FormData.label: i18n("Show percentage:")
             text: i18n("Overlay percentage text on bars")
+        }
+
+        QQC2.CheckBox {
+            id: showGraphsCheck
+            Kirigami.FormData.label: i18n("Show usage graphs:")
+            text: i18n("Display historical usage charts")
         }
 
         QQC2.SpinBox {

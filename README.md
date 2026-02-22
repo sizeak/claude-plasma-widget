@@ -7,9 +7,11 @@ A panel widget that shows your Claude Code token usage at a glance. Sits alongsi
 ## Features
 
 - **Compact panel view** — stacked progress bars with color-coded thresholds (green/yellow/red)
-- **Click to expand** — popup with detailed percentages, reset times, and a refresh button
+- **Click to expand** — detailed percentages, reset times, and a refresh button
+- **Burn rate** — shows usage velocity (%/hr) with warnings when you're on pace to hit the limit
+- **Usage graphs** — interactive historical charts with Session / 24h / 7d / 30d time ranges, threshold lines, gap detection, and burn rate projection
 - **Auto-refreshing** — polls the Anthropic usage API on a configurable interval (default 10 min)
-- **Configurable** — toggle weekly bar, percentage text overlay, refresh interval, credentials path
+- **Configurable** — toggle weekly bar, percentage text overlay, usage graphs, refresh interval, credentials path
 - **Theme-aware** — uses Kirigami/Plasma theme colors
 
 ## Requirements
@@ -49,5 +51,6 @@ Right-click the widget → **Configure**:
 |---------|---------|-------------|
 | Show weekly usage | On | Show/hide the 7-day bar |
 | Show percentage | Off | Overlay % text on bars |
+| Show usage graphs | On | Display historical usage charts in the expanded view |
 | Refresh interval | 600s | Seconds between API polls (15–600) |
 | Credentials file | `~/.claude/.credentials.json` | Path to Claude Code credentials |

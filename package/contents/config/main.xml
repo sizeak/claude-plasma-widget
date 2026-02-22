@@ -20,5 +20,8 @@
         <entry name="credentialsPath" type="String">
             <default>~/.claude/.credentials.json</default>
         </entry>
+        <entry name="showGraphs" type="Bool">
+            <default>true</default>
+        </entry>
     </group>
 </kcfg>
