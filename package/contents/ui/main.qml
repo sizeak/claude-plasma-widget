@@ -131,11 +131,11 @@ PlasmoidItem {
             return;
         }
 
-        // Check token expiry before making the API call
+        // Token expired — re-read credentials immediately for a fresh token
         if (root.tokenExpiresAt > 0 && Date.now() > root.tokenExpiresAt) {
             root.accessToken = "";
-            root.errorMessage = i18n("Token expired, will refresh on next poll");
             root.fetching = false;
+            fetchCredentials();
             return;
         }
 
@@ -168,9 +168,11 @@ PlasmoidItem {
                     root.errorMessage = i18n("Failed to parse usage response: %1", e.message);
                 }
             } else if (xhr.status === 401) {
-                // Token expired, clear it so next cycle re-reads credentials
+                // Token rejected — re-read credentials for a fresh token
                 root.accessToken = "";
-                root.errorMessage = i18n("Token expired, will retry on next poll");
+                root.fetching = false;
+                fetchCredentials();
+                return;
             } else if (xhr.status === 0) {
                 root.errorMessage = i18n("Network error: cannot reach API");
             } else {

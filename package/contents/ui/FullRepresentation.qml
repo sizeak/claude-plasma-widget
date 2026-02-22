@@ -40,15 +40,15 @@ PlasmaExtras.Representation {
         return graphTimeEnd - durations[selectedRangeIndex];
     }
 
-    // Filter history to the computed time window, mapping to {t, v} for the graph
+    // Filter history to the computed time window, never past now
     readonly property var filteredData: {
         var history = full.usageHistory;
         if (!history || history.length === 0) return [];
         var tStart = full.graphTimeStart;
-        var tEnd = full.graphTimeEnd;
+        var now = Date.now();
         var result = [];
         for (var i = 0; i < history.length; i++) {
-            if (history[i].t >= tStart && history[i].t <= tEnd) {
+            if (history[i].t >= tStart && history[i].t <= now) {
                 result.push({t: history[i].t, v: history[i].fh});
             }
         }
@@ -56,14 +56,10 @@ PlasmaExtras.Representation {
     }
 
     implicitWidth: Kirigami.Units.gridUnit * 20
-    implicitHeight: Kirigami.Units.gridUnit * 30
+    implicitHeight: contentLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
     Layout.minimumWidth: Kirigami.Units.gridUnit * 18
     Layout.minimumHeight: Kirigami.Units.gridUnit * 14
     Layout.maximumWidth: Kirigami.Units.gridUnit * 30
-    Layout.maximumHeight: Kirigami.Units.gridUnit * 50
-    Layout.preferredHeight: Plasmoid.configuration.showGraphs
-        ? Kirigami.Units.gridUnit * 36
-        : Kirigami.Units.gridUnit * 14
 
     header: PlasmaExtras.PlasmoidHeading {
         RowLayout {
@@ -203,7 +199,7 @@ PlasmaExtras.Representation {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: Kirigami.Units.smallSpacing
+            spacing: Kirigami.Units.mediumSpacing
             visible: Plasmoid.configuration.showGraphs
 
             PlasmaComponents3.TabBar {

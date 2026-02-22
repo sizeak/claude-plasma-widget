@@ -62,7 +62,9 @@ Item {
         var binWidth = tRange / n;
         var lastDataT = pts[pts.length - 1].t;
 
-        var lastBin = Math.min(n - 1, Math.floor((lastDataT - tMin) / binWidth));
+        // Stop at the earlier of last data point or now (don't draw into future)
+        var cutoffT = Math.min(lastDataT, Date.now());
+        var lastBin = Math.min(n - 1, Math.floor((cutoffT - tMin) / binWidth));
         if (lastBin < 0) return [];
 
         // Gap threshold: 3x median interval, minimum 20 minutes
@@ -77,7 +79,8 @@ Item {
             gapThreshold = Math.max(gapThreshold, intervals[Math.floor(intervals.length / 2)] * 3);
         }
 
-        // Resample with carry-forward
+        // Build a lookup: for each bin, find the nearest preceding data point
+        // and null out bins where that point is too far away (gap detection)
         var result = [];
         var pIdx = 0;
         for (var i = 0; i <= lastBin; i++) {
@@ -87,33 +90,10 @@ Item {
             }
             if (pts[pIdx].t > binTime) {
                 result.push(null);  // no data yet for this time
+            } else if (binTime - pts[pIdx].t > gapThreshold) {
+                result.push(null);  // data point too far in the past — gap
             } else {
                 result.push(Math.max(0, pts[pIdx].v));
-            }
-        }
-
-        // Mark gaps as null (where consecutive data points are far apart)
-        for (var gi = 1; gi < pts.length; gi++) {
-            if (pts[gi].t - pts[gi - 1].t > gapThreshold) {
-                var gapStart = Math.max(0, Math.floor((pts[gi - 1].t - tMin) / binWidth) + 1);
-                var gapEnd = Math.min(result.length - 1, Math.floor((pts[gi].t - tMin) / binWidth) - 1);
-                for (var gb = gapStart; gb <= gapEnd; gb++) {
-                    result[gb] = null;
-                }
-            }
-        }
-
-        // Extend flat to current time (only if last data is recent)
-        var now = Date.now();
-        if (now - lastDataT < gapThreshold) {
-            var nowBin = Math.min(n - 1, Math.floor((now - tMin) / binWidth));
-            if (nowBin > lastBin && result.length > 0) {
-                var extVal = result[result.length - 1];
-                if (extVal !== null) {
-                    for (var j = lastBin + 1; j <= nowBin; j++) {
-                        result.push(extVal);
-                    }
-                }
             }
         }
 
@@ -207,12 +187,12 @@ Item {
                             if (curSeg.length > 0) segments.push(curSeg);
                         }
 
-                        // Draw each contiguous segment
+                        // Draw each contiguous segment (skip tiny fragments)
                         var fillColor = Qt.rgba(graph.lineColor.r, graph.lineColor.g,
                                                  graph.lineColor.b, 0.20);
                         for (var seg = 0; seg < segments.length; seg++) {
                             var s = segments[seg];
-                            if (s.length === 0) continue;
+                            if (s.length < 3) continue;
 
                             // Filled area
                             ctx.beginPath();
