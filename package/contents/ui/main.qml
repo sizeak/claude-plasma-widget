@@ -44,6 +44,18 @@ PlasmoidItem {
         onTriggered: fetchCredentials()
     }
 
+    // Safety timer to reset stuck fetching flag
+    Timer {
+        id: fetchTimeout
+        interval: 20000
+        onTriggered: {
+            if (root.fetching) {
+                console.warn("Claude Usage: fetch timed out, resetting");
+                root.fetching = false;
+            }
+        }
+    }
+
     // Executable data source for reading credentials file
     Plasma5Support.DataSource {
         id: credentialsSource
@@ -61,6 +73,7 @@ PlasmoidItem {
                 root.errorMessage = i18n("Cannot read credentials file: %1",
                     stderr.trim() || "file not found or empty");
                 root.fetching = false;
+                fetchTimeout.stop();
                 return;
             }
 
@@ -80,6 +93,7 @@ PlasmoidItem {
                 if (!token) {
                     root.errorMessage = i18n("No access token found in credentials file");
                     root.fetching = false;
+                    fetchTimeout.stop();
                     return;
                 }
 
@@ -90,6 +104,7 @@ PlasmoidItem {
             } catch (e) {
                 root.errorMessage = i18n("Invalid JSON in credentials file: %1", e.message);
                 root.fetching = false;
+                fetchTimeout.stop();
             }
         }
     }
@@ -97,6 +112,7 @@ PlasmoidItem {
     function fetchCredentials() {
         if (fetching) return;
         fetching = true;
+        fetchTimeout.restart();
 
         var path = Plasmoid.configuration.credentialsPath;
         // Expand ~ and single-quote the rest to prevent shell injection
@@ -113,6 +129,7 @@ PlasmoidItem {
     function fetchUsage() {
         if (!root.accessToken) {
             root.fetching = false;
+            fetchTimeout.stop();
             return;
         }
 
@@ -121,6 +138,7 @@ PlasmoidItem {
             root.accessToken = "";
             root.errorMessage = i18n("Token expired, will refresh on next poll");
             root.fetching = false;
+            fetchTimeout.stop();
             return;
         }
 
@@ -157,12 +175,14 @@ PlasmoidItem {
                 root.errorMessage = i18n("API error: HTTP %1", xhr.status);
             }
             root.fetching = false;
+            fetchTimeout.stop();
         };
 
         xhr.send();
     }
 
     function refresh() {
+        fetching = false;  // Force-reset so manual refresh always works
         fetchCredentials();
     }
 }
