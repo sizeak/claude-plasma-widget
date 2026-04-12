@@ -15,8 +15,10 @@ PlasmoidItem {
 
     // Internal state
     property string accessToken: ""
+    property string refreshToken: ""
     property bool fetching: false
     property double tokenExpiresAt: 0
+    property bool refreshingToken: false
 
     switchWidth: Kirigami.Units.gridUnit * 10
     switchHeight: Kirigami.Units.gridUnit * 10
@@ -28,10 +30,23 @@ PlasmoidItem {
     toolTipSubText: {
         if (errorMessage !== "") return errorMessage;
         var text = i18n("Session: %1%", Math.round(fiveHourUsage * 100));
+        if (fiveHourResetsAt) {
+            text += " " + i18n("(resets at %1)", formatResetTime(fiveHourResetsAt));
+        }
         if (Plasmoid.configuration.showWeeklyUsage) {
             text += "\n" + i18n("Weekly: %1%", Math.round(sevenDayUsage * 100));
+            if (sevenDayResetsAt) {
+                text += " " + i18n("(resets at %1)", formatResetTime(sevenDayResetsAt));
+            }
         }
         return text;
+    }
+
+    function formatResetTime(isoString) {
+        if (!isoString) return "";
+        var d = new Date(isoString);
+        if (isNaN(d.getTime())) return isoString;
+        return Qt.formatDateTime(d, "hh:mm AP on MMM d");
     }
 
     // Timer for periodic polling
@@ -86,11 +101,40 @@ PlasmoidItem {
                 root.accessToken = token;
                 root.tokenExpiresAt = expiresAt;
                 root.errorMessage = "";
+
+                // If token is expired, trigger a refresh via claude CLI
+                if (root.tokenExpiresAt > 0 && Date.now() > root.tokenExpiresAt) {
+                    if (!root.refreshingToken) {
+                        triggerTokenRefresh();
+                    } else {
+                        // Already tried refreshing but token is still expired
+                        root.errorMessage = i18n("Token expired, run claude to refresh");
+                        root.fetching = false;
+                        root.refreshingToken = false;
+                    }
+                    return;
+                }
+
+                root.refreshingToken = false;
                 fetchUsage();
             } catch (e) {
                 root.errorMessage = i18n("Invalid JSON in credentials file: %1", e.message);
                 root.fetching = false;
             }
+        }
+    }
+
+    // Executable data source for refreshing token via claude CLI
+    Plasma5Support.DataSource {
+        id: refreshSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: function(source, data) {
+            refreshSource.disconnectSource(source);
+            // claude auth status triggers token refresh and rewrites credentials file
+            // Now re-read the credentials file to pick up the new token
+            fetchCredentials();
         }
     }
 
@@ -110,16 +154,17 @@ PlasmoidItem {
         credentialsSource.connectSource(cmd);
     }
 
+    function triggerTokenRefresh() {
+        root.refreshingToken = true;
+        root.errorMessage = i18n("Refreshing token...");
+        // `claude -p ""` triggers the CLI's OAuth refresh during startup (which uses DPoP
+        // internally) and writes the new token to the credentials file. An empty prompt
+        // exits without making a model API call. timeout guards against hangs.
+        refreshSource.connectSource("timeout 8 claude -p '' </dev/null");
+    }
+
     function fetchUsage() {
         if (!root.accessToken) {
-            root.fetching = false;
-            return;
-        }
-
-        // Check token expiry before making the API call
-        if (root.tokenExpiresAt > 0 && Date.now() > root.tokenExpiresAt) {
-            root.accessToken = "";
-            root.errorMessage = i18n("Token expired, will refresh on next poll");
             root.fetching = false;
             return;
         }
@@ -147,22 +192,31 @@ PlasmoidItem {
                 } catch (e) {
                     root.errorMessage = i18n("Failed to parse usage response: %1", e.message);
                 }
+                root.fetching = false;
             } else if (xhr.status === 401) {
-                // Token expired, clear it so next cycle re-reads credentials
+                // Token rejected by API — try refreshing via claude CLI
                 root.accessToken = "";
-                root.errorMessage = i18n("Token expired, will retry on next poll");
+                if (!root.refreshingToken) {
+                    triggerTokenRefresh();
+                } else {
+                    root.errorMessage = i18n("Token expired, run claude to refresh");
+                    root.fetching = false;
+                    root.refreshingToken = false;
+                }
             } else if (xhr.status === 0) {
                 root.errorMessage = i18n("Network error: cannot reach API");
+                root.fetching = false;
             } else {
                 root.errorMessage = i18n("API error: HTTP %1", xhr.status);
+                root.fetching = false;
             }
-            root.fetching = false;
         };
 
         xhr.send();
     }
 
     function refresh() {
+        root.refreshingToken = false;
         fetchCredentials();
     }
 }
