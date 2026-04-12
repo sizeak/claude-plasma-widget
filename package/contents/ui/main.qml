@@ -157,7 +157,10 @@ PlasmoidItem {
     function triggerTokenRefresh() {
         root.refreshingToken = true;
         root.errorMessage = i18n("Refreshing token...");
-        refreshSource.connectSource("timeout 15 claude auth status");
+        // `claude -p ""` triggers the CLI's OAuth refresh during startup (which uses DPoP
+        // internally) and writes the new token to the credentials file. An empty prompt
+        // exits without making a model API call. timeout guards against hangs.
+        refreshSource.connectSource("timeout 8 claude -p '' </dev/null");
     }
 
     function fetchUsage() {
