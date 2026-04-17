@@ -132,7 +132,8 @@ PlasmoidItem {
 
         onNewData: function(source, data) {
             refreshSource.disconnectSource(source);
-            // claude auth status triggers token refresh and rewrites credentials file
+            // Reset fetching flag so the re-read is not blocked by the concurrency guard
+            root.fetching = false;
             // Now re-read the credentials file to pick up the new token
             fetchCredentials();
         }
